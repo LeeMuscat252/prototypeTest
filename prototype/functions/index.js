@@ -10,6 +10,34 @@ setGlobalOptions({ maxInstances: 10 });
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 const app = express();
 
+const MODEL_CANDIDATES = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+];
+
+async function generateWithFallback(genAI, prompt) {
+  let lastError = null;
+
+  for (const modelName of MODEL_CANDIDATES) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      return result.response.text().trim();
+    } catch (error) {
+      const message = error && error.message ? error.message : "";
+      const isUnavailable = /not found|unsupported|404|not supported/i.test(message);
+
+      lastError = error;
+      if (!isUnavailable) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError || new Error("No compatible Gemini model was available.");
+}
+
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
 
@@ -49,9 +77,7 @@ app.post("/process-text", async (req, res) => {
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent(prompt);
-    const output = result.response.text().trim();
+    const output = await generateWithFallback(genAI, prompt);
 
     if (!output) {
       res.status(502).json({ error: "Gemini returned an empty response." });
