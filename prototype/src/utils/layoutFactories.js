@@ -1,5 +1,6 @@
 import { SECTION_TYPES } from '../constants/sections'
 import { normalizeNavigationLinks } from '../navigationUtils'
+import { createFooterSection, normalizeFooterSection } from './footerUtils'
 
 export const normalizeNavigationSection = (section) =>
   section?.type === SECTION_TYPES.NAVIGATION
@@ -38,7 +39,9 @@ export const createDefaultPages = () => [
 
 export const normalizePage = (page) => ({
   ...page,
-  sections: Array.isArray(page.sections) ? page.sections.map(normalizeNavigationSection) : [],
+  sections: Array.isArray(page.sections)
+    ? page.sections.map((section) => normalizeFooterSection(normalizeNavigationSection(section)))
+    : [],
   floatingButtons: Array.isArray(page.floatingButtons) ? page.floatingButtons : [],
   floatingTexts: Array.isArray(page.floatingTexts) ? page.floatingTexts : [],
   floatingImages: Array.isArray(page.floatingImages) ? page.floatingImages : [],
@@ -111,20 +114,14 @@ export const createSection = (type) => {
   }
 
   if (type === SECTION_TYPES.FOOTER) {
-    return {
-      id,
-      type,
-      text: 'Footer content and small print.',
-      align: 'left',
-      height: 100,
-    }
+    return createFooterSection(id)
   }
 
   return {
     id,
     type,
-    title: 'Block Title',
-    body: 'Use this block for concise, structured information.',
+    title: '',
+    body: '',
     align: 'left',
     height: 160,
     nestedItems: [],

@@ -3,14 +3,14 @@ import { getAnalytics } from 'firebase/analytics'
 import { getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
-}
+  apiKey: "AIzaSyBquzu3d3gO1H295wgyYjtd55Vmg6MhgV8",
+  authDomain: "prototype-5e11d.firebaseapp.com",
+  projectId: "prototype-5e11d",
+  storageBucket: "prototype-5e11d.firebasestorage.app",
+  messagingSenderId: "188741320189",
+  appId: "1:188741320189:web:ecccfc3326ce41cbf32d94",
+  measurementId: "G-0HQLDG60B0"
+};
 
 const hasFirebaseConfig = [
   firebaseConfig.apiKey,

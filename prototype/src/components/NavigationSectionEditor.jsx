@@ -123,6 +123,52 @@ export default function NavigationSectionEditor({
           Disable Right
         </button>
       </div>
+      <div style={{ marginTop: 12 }}>
+        <h4>Navigation hover style</h4>
+        <label>
+          Link hover background
+          <input
+            type="color"
+            value={(activeSection.style && activeSection.style.navLinkHover && activeSection.style.navLinkHover.background) || '#ffffff'}
+            onChange={(e) => patchSection(activeSection.id, { style: { ...(activeSection.style || {}), navLinkHover: { ...(activeSection.style?.navLinkHover || {}), background: e.target.value } } })}
+          />
+        </label>
+        <label>
+          Link hover color
+          <input
+            type="color"
+            value={(activeSection.style && activeSection.style.navLinkHover && activeSection.style.navLinkHover.color) || '#000000'}
+            onChange={(e) => patchSection(activeSection.id, { style: { ...(activeSection.style || {}), navLinkHover: { ...(activeSection.style?.navLinkHover || {}), color: e.target.value } } })}
+          />
+        </label>
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <h4>Navigation style</h4>
+        <label>
+          Underline color
+          <input
+            type="color"
+            value={(activeSection.style && (activeSection.style.navAccent || activeSection.style['nav-accent'])) || '#FFD400'}
+            onChange={(e) =>
+              patchSection(activeSection.id, {
+                style: { ...(activeSection.style || {}), navAccent: e.target.value },
+              })
+            }
+          />
+        </label>
+        <label>
+          Active link color
+          <input
+            type="color"
+            value={(activeSection.style && (activeSection.style.navActiveColor || activeSection.style['nav-active-color'])) || '#FFFFFF'}
+            onChange={(e) =>
+              patchSection(activeSection.id, {
+                style: { ...(activeSection.style || {}), navActiveColor: e.target.value },
+              })
+            }
+          />
+        </label>
+      </div>
     </>
   )
 }

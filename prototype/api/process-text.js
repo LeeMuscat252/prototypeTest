@@ -55,10 +55,33 @@ export default async function handler(req, res) {
 
   const instruction =
     mode === 'summarize'
-      ? 'Summarize the following text into concise key points while preserving meaning. Keep a clear and readable paragraph format.'
-      : 'Simplify the following text for general readers. Use plain language, short sentences, and maintain the original meaning.'
+      ? [
+          'Summarise the text below.',
+          'Keep the main meaning of the original text.',
+          'Remove repeated ideas and unnecessary details.',
+          'Keep important facts, names, dates, numbers, and key points.',
+          'Make the text shorter than the original.',
+          'Avoid adding new information that was not in the original text.',
+          'Keep the original topic and purpose.',
+          'Use one clear paragraph unless bullet points are requested.',
+          'Keep the summary around 30–50% of the original length.',
+          'Do not change the meaning of the original content.',
+        ].join('\n')
+      : [
+          'Simplify the text below.',
+          'Use simple, clear words.',
+          'Use shorter sentences.',
+          'Avoid technical words where possible.',
+          'Explain difficult ideas in easier language.',
+          'Remove overly complex sentence structures.',
+          'Keep the text readable for a general audience.',
+          'Avoid slang or informal wording unless the original text requires it.',
+          'Keep the tone neutral and professional.',
+          'Keep the original message accurate.',
+          'Improve clarity without making the text too vague.',
+        ].join('\n')
 
-  const prompt = `${instruction}\n\nText:\n${inputText}`
+  const prompt = `${instruction}\n\nText:\n${inputText}\n\nReturn only the rewritten text.`
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey)

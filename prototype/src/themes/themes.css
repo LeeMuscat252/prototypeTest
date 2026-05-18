@@ -1,0 +1,71 @@
+/* Simple Light Theme */
+:root[data-theme='simple-light'] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --nav-bg: #ffffff;
+  --nav-link: #333333;
+  --nav-border: #e0e0e0;
+  --button-bg: #0066ff;
+  --button-text: #ffffff;
+  --button-hover: #0052cc;
+  --card-bg: #ffffff;
+  --card-border: #e0e0e0;
+  --shadow: rgba(0, 0, 0, 0.05);
+  --border-radius: 4px;
+  --border-color: #cccccc;
+  /* Navigation button specific variables */
+  --nav-button-border-color: var(--button-bg);
+  --nav-button-border-width: 1px;
+  --nav-button-border-style: solid;
+  --nav-button-border-radius: 999px;
+  --nav-button-padding: 7px 12px;
+  --nav-button-bg: var(--card-bg);
+  --nav-button-color: var(--button-bg);
+  --nav-accent: #FFD400;
+  --nav-active-color: var(--button-text);
+  --nav-padding-vertical: 8px;
+  --nav-padding-horizontal: 6px;
+  --nav-gap: 16px;
+  --nav-font-size: 0.9rem;
+  --nav-logo-size: 48px;
+  --nav-underline-height: 3px;
+  --nav-underline-offset: 8px;
+}
+/* Dark Theme */
+:root[data-theme='dark'] {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #2d2d2d;
+  --text-primary: #ffffff;
+  --text-secondary: #cccccc;
+  --nav-bg: #0d0d0d;
+  --nav-link: #ffffff;
+  --nav-border: #444444;
+  --button-bg: #00a8ff;
+  --button-text: #ffffff;
+  --button-hover: #0088cc;
+  --card-bg: #2d2d2d;
+  --card-border: #444444;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --border-radius: 8px;
+  --border-color: #444444;
+  /* Navigation button specific variables */
+  --nav-button-border-color: var(--button-bg);
+  --nav-button-border-width: 1px;
+  --nav-button-border-style: solid;
+  --nav-button-border-radius: 999px;
+  --nav-button-padding: 7px 12px;
+  --nav-button-bg: var(--card-bg);
+  --nav-button-color: var(--button-bg);
+  --nav-accent: #FFD400;
+  --nav-active-color: var(--button-text);
+  --nav-padding-vertical: 8px;
+  --nav-padding-horizontal: 6px;
+  --nav-gap: 16px;
+  --nav-font-size: 0.9rem;
+  --nav-logo-size: 48px;
+  --nav-underline-height: 3px;
+  --nav-underline-offset: 8px;
+}
+/* Only simple-light and dark themes are supported */

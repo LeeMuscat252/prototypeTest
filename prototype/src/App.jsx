@@ -1,6 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import './App.css'
+import './themes/themes.css'
+import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import ComponentPalettePanel from './components/ComponentPalettePanel'
 import { firebaseReady } from './firebase'
 import ExportPanel from './components/ExportPanel'
@@ -10,17 +12,19 @@ import PreviewStage from './components/PreviewStage'
 import SectionInspector from './components/SectionInspector'
 import SummariserPanel from './components/SummariserPanel'
 import { buildHtmlDocument, exportHtmlFile, exportLayoutFile } from './utils/exportHtml'
+import { createFooterSection, normalizeFooterSection } from './utils/footerUtils'
 import {
   createNavigationLink,
   normalizeNavigationLinks,
 } from './navigationUtils'
 const SECTION_TYPES = {
-  HEADER: 'header',
-  TEXT: 'text',
-  IMAGE: 'image',
-  BLOCK: 'block',
-  BUTTON: 'button',
   NAVIGATION: 'navigation',
+  HEADER: 'header',
+  BLOCK: 'block',
+  IMAGE: 'image',
+  CAROUSEL: 'carousel',
+  TEXT: 'text',
+  BUTTON: 'button',
   FOOTER: 'footer',
 }
 
@@ -28,6 +32,7 @@ const SECTION_LABELS = {
   [SECTION_TYPES.HEADER]: 'Header',
   [SECTION_TYPES.TEXT]: 'Text',
   [SECTION_TYPES.IMAGE]: 'Image',
+  [SECTION_TYPES.CAROUSEL]: 'Image Carousel',
   [SECTION_TYPES.BLOCK]: 'Content Block',
   [SECTION_TYPES.BUTTON]: 'Button',
   [SECTION_TYPES.NAVIGATION]: 'Navigation',
@@ -39,6 +44,48 @@ const normalizeNavigationSection = (section) =>
     ? { ...section, links: normalizeNavigationLinks(section.links) }
     : section
 
+const normalizeFooterSectionInApp = (section) => normalizeFooterSection(section)
+
+const normalizeHeaderSection = (section) => {
+  if (section?.type !== SECTION_TYPES.HEADER) {
+    return section
+  }
+
+  return {
+    ...section,
+    title: section.title || section.subtitle || 'Your Hero Headline',
+  }
+}
+
+const createCarouselImage = (index = 0, overrides = {}) => ({
+  id: overrides.id || `carousel-image-${crypto.randomUUID()}`,
+  src:
+    overrides.src ||
+    [
+      'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=1200&q=80',
+    ][index % 3],
+  alt: overrides.alt || `Carousel image ${index + 1}`,
+  caption: overrides.caption || `Slide ${index + 1}`,
+})
+
+const normalizeCarouselSection = (section) =>
+  section?.type === SECTION_TYPES.CAROUSEL
+    ? {
+        ...section,
+        images:
+          Array.isArray(section.images) && section.images.length > 0
+            ? section.images.map((image, index) => createCarouselImage(index, image))
+            : [createCarouselImage(0), createCarouselImage(1), createCarouselImage(2)],
+        autoplay: section.autoplay ?? true,
+        interval: Number(section.interval) || 4000,
+        height: Number(section.height) || 630,
+        showCaptions: section.showCaptions ?? true,
+        loop: section.loop ?? true,
+      }
+    : section
+
 const createPage = (
   name,
   {
@@ -47,6 +94,7 @@ const createPage = (
     floatingButtons = [],
     floatingTexts = [],
     floatingImages = [],
+    floatingCarousels = [],
   } = {},
 ) => ({
   id: `page-${crypto.randomUUID()}`,
@@ -56,6 +104,7 @@ const createPage = (
   floatingButtons,
   floatingTexts,
   floatingImages,
+  floatingCarousels,
 })
 
 const createDefaultPages = () => [
@@ -71,10 +120,17 @@ const createDefaultPages = () => [
 
 const normalizePage = (page) => ({
   ...page,
-  sections: Array.isArray(page.sections) ? page.sections.map(normalizeNavigationSection) : [],
+  sections: Array.isArray(page.sections)
+    ? page.sections.map((section) =>
+        normalizeHeaderSection(
+          normalizeFooterSectionInApp(normalizeCarouselSection(normalizeNavigationSection(section))),
+        ),
+      )
+    : [],
   floatingButtons: Array.isArray(page.floatingButtons) ? page.floatingButtons : [],
   floatingTexts: Array.isArray(page.floatingTexts) ? page.floatingTexts : [],
   floatingImages: Array.isArray(page.floatingImages) ? page.floatingImages : [],
+  floatingCarousels: Array.isArray(page.floatingCarousels) ? page.floatingCarousels : [],
 })
 
 const createSection = (type) => {
@@ -84,10 +140,9 @@ const createSection = (type) => {
     return {
       id,
       type,
-      title: 'New Header',
-      subtitle: 'Add supporting text',
-      align: 'left',
-      height: 150,
+      title: 'Your Hero Headline',
+      align: 'center',
+      height: 320,
     }
   }
 
@@ -112,6 +167,21 @@ const createSection = (type) => {
       height: 260,
       position: 'center',
       offsetX: 0,
+    }
+  }
+
+  if (type === SECTION_TYPES.CAROUSEL) {
+    return {
+      id,
+      type,
+      title: 'Image Carousel',
+      images: [createCarouselImage(0), createCarouselImage(1), createCarouselImage(2)],
+      autoplay: true,
+      interval: 4000,
+      height: 630,
+      showCaptions: true,
+      loop: true,
+      align: 'center',
     }
   }
 
@@ -144,20 +214,14 @@ const createSection = (type) => {
   }
 
   if (type === SECTION_TYPES.FOOTER) {
-    return {
-      id,
-      type,
-      text: 'Footer content and small print.',
-      align: 'left',
-      height: 100,
-    }
+    return createFooterSection(id)
   }
 
   return {
     id,
     type,
-    title: 'Block Title',
-    body: 'Use this block for concise, structured information.',
+    title: '',
+    body: '',
     align: 'left',
     height: 160,
     nestedItems: [],
@@ -249,7 +313,8 @@ const reorderByDropZone = (items, movingId, dropIndex) => {
   return next
 }
 
-function App() {
+function AppContent() {
+  const { currentTheme, styleOverrides } = useTheme()
   const initialPages = useMemo(() => createDefaultPages(), [])
   const [pages, setPages] = useState(() => initialPages)
   const [activePageId, setActivePageId] = useState(() => initialPages[0].id)
@@ -257,6 +322,8 @@ function App() {
   const [activeFloatingButtonId, setActiveFloatingButtonId] = useState(null)
   const [activeFloatingTextId, setActiveFloatingTextId] = useState(null)
   const [activeFloatingImageId, setActiveFloatingImageId] = useState(null)
+  const [activeFloatingCarouselId, setActiveFloatingCarouselId] = useState(null)
+  const [activeCarouselImageId, setActiveCarouselImageId] = useState(null)
   const [inputText, setInputText] = useState('')
   const [aiOutput, setAiOutput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -268,10 +335,21 @@ function App() {
   const [draggingButton, setDraggingButton] = useState(null)
   const [draggingFloatingText, setDraggingFloatingText] = useState(null)
   const [draggingFloatingImage, setDraggingFloatingImage] = useState(null)
+  const [draggingFloatingCarousel, setDraggingFloatingCarousel] = useState(null)
   const [resizingFloatingImage, setResizingFloatingImage] = useState(null)
+  const [resizingFloatingCarousel, setResizingFloatingCarousel] = useState(null)
+  const [activeFloatingCarouselImageId, setActiveFloatingCarouselImageId] = useState(null)
   const [activeNestedItemId, setActiveNestedItemId] = useState(null)
   const [firebaseStatus, setFirebaseStatus] = useState('')
   const [isEditorCollapsed, setIsEditorCollapsed] = useState(false)
+  const [overlayOpen, setOverlayOpen] = useState(false)
+  const [keepEditorOpenOnLeave, setKeepEditorOpenOnLeave] = useState(() => {
+    try {
+      return localStorage.getItem('keepEditorOpenOnLeave') === 'true'
+    } catch (e) {
+      return false
+    }
+  })
   const imageInputRef = useRef(null)
   const nestedImageInputRef = useRef(null)
 
@@ -286,6 +364,7 @@ function App() {
   const floatingButtons = activePage?.floatingButtons || []
   const floatingTexts = activePage?.floatingTexts || []
   const floatingImages = activePage?.floatingImages || []
+  const floatingCarousels = activePage?.floatingCarousels || []
 
   const updateActivePage = (updater) => {
     setPages((current) =>
@@ -330,13 +409,22 @@ function App() {
     }))
   }
 
+  const setFloatingCarousels = (nextValue) => {
+    updateActivePage((page) => ({
+      floatingCarousels: typeof nextValue === 'function' ? nextValue(page.floatingCarousels) : nextValue,
+    }))
+  }
+
   const selectPage = (pageId) => {
     setActivePageId(pageId)
     setActiveSectionId(null)
     setActiveFloatingButtonId(null)
     setActiveFloatingTextId(null)
     setActiveFloatingImageId(null)
+    setActiveCarouselImageId(null)
+    setActiveFloatingCarouselImageId(null)
     setActiveNestedItemId(null)
+    setActiveFloatingCarouselId(null)
   }
 
   const createBlankPage = (name) => createPage(name, { pageTitle: name })
@@ -403,6 +491,20 @@ function App() {
     [floatingImages, activeFloatingImageId],
   )
 
+  const activeFloatingCarousel = useMemo(
+    () => floatingCarousels.find((c) => c.id === activeFloatingCarouselId) ?? null,
+    [floatingCarousels, activeFloatingCarouselId],
+  )
+
+  const activeCarouselImage = useMemo(() => {
+    if (activeSection?.type !== SECTION_TYPES.CAROUSEL) {
+      return null
+    }
+
+    const carouselImages = activeSection.images || []
+    return carouselImages.find((image) => image.id === activeCarouselImageId) ?? carouselImages[0] ?? null
+  }, [activeSection, activeCarouselImageId])
+
   const activeNestedItem = useMemo(() => {
     if (activeSection?.type !== SECTION_TYPES.BLOCK) {
       return null
@@ -417,8 +519,27 @@ function App() {
   )
 
   const htmlPreview = useMemo(
-    () => buildHtmlDocument(sections, pageTitle, floatingButtons, floatingTexts, floatingImages),
-    [sections, pageTitle, floatingButtons, floatingTexts, floatingImages],
+    () =>
+      buildHtmlDocument(
+        sections,
+        pageTitle,
+        floatingButtons,
+        floatingTexts,
+        floatingImages,
+        floatingCarousels,
+        currentTheme,
+        styleOverrides,
+      ),
+    [
+      sections,
+      pageTitle,
+      floatingButtons,
+      floatingTexts,
+      floatingImages,
+      floatingCarousels,
+      currentTheme,
+      styleOverrides,
+    ],
   )
 
   const addSection = (type) => {
@@ -427,7 +548,6 @@ function App() {
       setFloatingButtons((current) => [...current, { ...nextButton, offsetX: 24, offsetY: 24 }])
       setActiveSectionId(null)
       setActiveFloatingButtonId(nextButton.id)
-      setActiveFloatingTextId(null)
       setActiveFloatingImageId(null)
       return
     }
@@ -476,12 +596,41 @@ function App() {
       return
     }
 
+    if (type === SECTION_TYPES.CAROUSEL) {
+      const nextCarousel = createSection(type)
+      setFloatingCarousels((current) => [
+        ...current,
+        {
+          id: nextCarousel.id,
+          type: SECTION_TYPES.CAROUSEL,
+          images: nextCarousel.images,
+          autoplay: nextCarousel.autoplay,
+          interval: nextCarousel.interval,
+          height: nextCarousel.height || 630,
+          showCaptions: nextCarousel.showCaptions,
+          loop: nextCarousel.loop,
+          align: nextCarousel.align || 'center',
+          offsetX: 24,
+          offsetY: 24,
+          width: 480,
+        },
+      ])
+      setActiveSectionId(null)
+      setActiveFloatingButtonId(null)
+      setActiveFloatingTextId(null)
+      setActiveFloatingImageId(null)
+      setActiveFloatingCarouselId(nextCarousel.id)
+      setActiveFloatingCarouselImageId(nextCarousel.images?.[0]?.id ?? null)
+      return
+    }
+
     const next = createSection(type)
     setSections((current) => [...current, next])
     setActiveSectionId(next.id)
     setActiveFloatingButtonId(null)
     setActiveFloatingTextId(null)
     setActiveFloatingImageId(null)
+    setActiveCarouselImageId(next.type === SECTION_TYPES.CAROUSEL ? next.images?.[0]?.id ?? null : null)
   }
 
   const insertSectionAt = (type, index) => {
@@ -552,12 +701,14 @@ function App() {
     setActiveFloatingButtonId(null)
     setActiveFloatingTextId(null)
     setActiveFloatingImageId(null)
+    setActiveCarouselImageId(next.type === SECTION_TYPES.CAROUSEL ? next.images?.[0]?.id ?? null : null)
   }
 
   const removeSection = (sectionId) => {
     setSections((current) => current.filter((section) => section.id !== sectionId))
     setActiveSectionId((current) => (current === sectionId ? null : current))
     setActiveNestedItemId((current) => (activeSectionId === sectionId ? null : current))
+    setActiveCarouselImageId((current) => (activeSectionId === sectionId ? null : current))
   }
 
   const patchSection = (sectionId, patch) => {
@@ -583,6 +734,145 @@ function App() {
   const patchFloatingImage = (imageId, patch) => {
     setFloatingImages((current) =>
       current.map((imageBox) => (imageBox.id === imageId ? { ...imageBox, ...patch } : imageBox)),
+    )
+  }
+
+  const patchFloatingCarousel = (carouselId, patch) => {
+    setFloatingCarousels((current) =>
+      current.map((c) => (c.id === carouselId ? { ...c, ...patch } : c)),
+    )
+  }
+
+  const addFloatingCarouselImage = (carouselId) => {
+    const nextImage = createCarouselImage()
+
+    setFloatingCarousels((current) =>
+      current.map((c) =>
+        c.id === carouselId ? { ...c, images: [...(c.images || []), nextImage] } : c,
+      ),
+    )
+
+    setActiveFloatingCarouselImageId(nextImage.id)
+  }
+
+  const removeFloatingCarouselImage = (carouselId, imageId) => {
+    setFloatingCarousels((current) =>
+      current.map((c) =>
+        c.id === carouselId ? { ...c, images: (c.images || []).filter((img) => img.id !== imageId) } : c,
+      ),
+    )
+
+    setActiveFloatingCarouselImageId((current) => (current === imageId ? null : current))
+  }
+
+  const moveFloatingCarouselImage = (carouselId, imageId, direction) => {
+    setFloatingCarousels((current) =>
+      current.map((c) => {
+        if (c.id !== carouselId) return c
+        const items = [...(c.images || [])]
+        const fromIndex = items.findIndex((i) => i.id === imageId)
+        const toIndex = fromIndex + direction
+        if (fromIndex < 0 || toIndex < 0 || toIndex >= items.length) return c
+        const [moving] = items.splice(fromIndex, 1)
+        items.splice(toIndex, 0, moving)
+        return { ...c, images: items }
+      }),
+    )
+  }
+
+  const patchFloatingCarouselImage = (carouselId, imageId, patch) => {
+    setFloatingCarousels((current) =>
+      current.map((c) =>
+        c.id === carouselId
+          ? { ...c, images: (c.images || []).map((img) => (img.id === imageId ? { ...img, ...patch } : img)) }
+          : c,
+      ),
+    )
+  }
+
+  const handleFloatingCarouselImageFile = async (carouselId, imageId, file) => {
+    if (!file) return
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      // only update the image source when replacing file; keep existing alt/caption
+      patchFloatingCarouselImage(carouselId, imageId, { src: dataUrl })
+    } catch (error) {
+      setAiError(error.message)
+    }
+  }
+
+  const patchCarouselImage = (sectionId, imageId, patch) => {
+    setSections((current) =>
+      current.map((section) =>
+        section.id === sectionId && section.type === SECTION_TYPES.CAROUSEL
+          ? {
+              ...section,
+              images: (section.images || []).map((image) =>
+                image.id === imageId ? { ...image, ...patch } : image,
+              ),
+            }
+          : section,
+      ),
+    )
+  }
+
+  const addCarouselImage = (sectionId) => {
+    const nextImage = createCarouselImage()
+
+    setSections((current) =>
+      current.map((section) =>
+        section.id === sectionId && section.type === SECTION_TYPES.CAROUSEL
+          ? {
+              ...section,
+              images: [...(section.images || []), nextImage],
+            }
+          : section,
+      ),
+    )
+
+    setActiveSectionId(sectionId)
+    setActiveCarouselImageId(nextImage.id)
+  }
+
+  const removeCarouselImage = (sectionId, imageId) => {
+    setSections((current) =>
+      current.map((section) =>
+        section.id === sectionId && section.type === SECTION_TYPES.CAROUSEL
+          ? {
+              ...section,
+              images: (section.images || []).filter((image) => image.id !== imageId),
+            }
+          : section,
+      ),
+    )
+
+    setActiveCarouselImageId((current) => (current === imageId ? null : current))
+  }
+
+  const moveCarouselImage = (sectionId, imageId, direction) => {
+    setSections((current) =>
+      current.map((section) => {
+        if (section.id !== sectionId || section.type !== SECTION_TYPES.CAROUSEL) {
+          return section
+        }
+
+        const nextImages = [...(section.images || [])]
+        const fromIndex = nextImages.findIndex((image) => image.id === imageId)
+        const targetIndex = fromIndex + direction
+
+        if (fromIndex < 0 || targetIndex < 0 || targetIndex >= nextImages.length) {
+          return section
+        }
+
+        const [movingImage] = nextImages.splice(fromIndex, 1)
+        nextImages.splice(targetIndex, 0, movingImage)
+
+        return {
+          ...section,
+          images: nextImages,
+        }
+      }),
     )
   }
 
@@ -717,6 +1007,9 @@ function App() {
   }
 
   const startNestedItemDrag = (event, sectionId, currentOffset = 0, nestedItemId = null) => {
+    // ensure section and nested item are selected when user begins interaction
+    setActiveSectionId(sectionId)
+    setActiveNestedItemId(nestedItemId)
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget?.setPointerCapture?.(event.pointerId)
@@ -748,7 +1041,9 @@ function App() {
       startNestedItemDrag(event, sectionId, currentOffset, nestedItemId)
       return
     }
-
+    // select the section image being interacted with
+    setActiveSectionId(sectionId)
+    setActiveNestedItemId(null)
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget?.setPointerCapture?.(event.pointerId)
@@ -776,6 +1071,15 @@ function App() {
   }
 
   const startButtonDrag = (event, sectionId, currentOffsetX = 0, currentOffsetY = 0) => {
+    // select either a section-level button or a floating button
+    const isSectionButton = sections.find((s) => s.id === sectionId && s.type === SECTION_TYPES.BUTTON)
+    if (isSectionButton) {
+      setActiveSectionId(sectionId)
+      setActiveFloatingButtonId(null)
+    } else {
+      setActiveSectionId(null)
+      setActiveFloatingButtonId(sectionId)
+    }
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget?.setPointerCapture?.(event.pointerId)
@@ -808,6 +1112,9 @@ function App() {
   }
 
   const startFloatingTextDrag = (event, textId, currentOffsetX = 0, currentOffsetY = 0) => {
+    // select floating text being interacted with
+    setActiveSectionId(null)
+    setActiveFloatingTextId(textId)
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget?.setPointerCapture?.(event.pointerId)
@@ -840,6 +1147,9 @@ function App() {
   }
 
   const startFloatingImageDrag = (event, imageId, currentOffsetX = 0, currentOffsetY = 0) => {
+    // select floating image being interacted with
+    setActiveSectionId(null)
+    setActiveFloatingImageId(imageId)
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget?.setPointerCapture?.(event.pointerId)
@@ -867,6 +1177,41 @@ function App() {
     }
 
     setDraggingFloatingImage({ imageId })
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }
+
+  const startFloatingCarouselDrag = (event, carouselId, currentOffsetX = 0, currentOffsetY = 0) => {
+    // select floating carousel being interacted with
+    setActiveSectionId(null)
+    setActiveFloatingCarouselId(carouselId)
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget?.setPointerCapture?.(event.pointerId)
+
+    const startX = event.clientX
+    const startY = event.clientY
+    const initialOffsetX = currentOffsetX
+    const initialOffsetY = currentOffsetY
+    const dragLimit = Math.max(1000, Math.round(window.innerWidth * 0.8))
+
+    const handleMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX
+      const deltaY = moveEvent.clientY - startY
+
+      patchFloatingCarousel(carouselId, {
+        offsetX: Math.max(-dragLimit, Math.min(dragLimit, initialOffsetX + deltaX)),
+        offsetY: Math.max(-dragLimit, Math.min(dragLimit, initialOffsetY + deltaY)),
+      })
+    }
+
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      setDraggingFloatingCarousel(null)
+    }
+
+    setDraggingFloatingCarousel({ carouselId })
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp)
   }
@@ -935,6 +1280,70 @@ function App() {
     window.addEventListener('pointerup', handleUp)
   }
 
+  const startFloatingCarouselResize = (
+    event,
+    carouselId,
+    currentWidth = 480,
+    currentHeight = 630,
+    direction,
+    currentOffsetX = 0,
+    currentOffsetY = 0,
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startY = event.clientY
+    const initialWidth = currentWidth || 480
+    const initialHeight = currentHeight || 630
+    const initialOffsetX = currentOffsetX || 0
+    const initialOffsetY = currentOffsetY || 0
+
+    const handleMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX
+      const deltaY = moveEvent.clientY - startY
+
+      if (direction === 'left') {
+        const nextWidth = Math.max(120, Math.min(1600, initialWidth - deltaX))
+        const widthDelta = initialWidth - nextWidth
+        patchFloatingCarousel(carouselId, {
+          width: nextWidth,
+          offsetX: initialOffsetX + widthDelta,
+        })
+        return
+      }
+
+      if (direction === 'right') {
+        const nextWidth = Math.max(120, Math.min(1600, initialWidth + deltaX))
+        patchFloatingCarousel(carouselId, { width: nextWidth })
+        return
+      }
+
+      if (direction === 'top') {
+        const nextHeight = Math.max(120, Math.min(1200, initialHeight - deltaY))
+        const heightDelta = initialHeight - nextHeight
+        patchFloatingCarousel(carouselId, {
+          height: nextHeight,
+          offsetY: initialOffsetY + heightDelta,
+        })
+        return
+      }
+
+      const nextHeight = Math.max(120, Math.min(1200, initialHeight + deltaY))
+      patchFloatingCarousel(carouselId, { height: nextHeight })
+    }
+
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      setResizingFloatingCarousel(null)
+    }
+
+    setResizingFloatingCarousel({ carouselId, direction })
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }
+
   const readFileAsDataUrl = (file) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -999,10 +1408,9 @@ function App() {
 
     try {
       const dataUrl = await readFileAsDataUrl(file)
+      // only update the image source when replacing file; keep existing alt/caption
       patchFloatingImage(imageId, {
         src: dataUrl,
-        alt: file.name,
-        caption: file.name,
       })
     } catch (error) {
       setAiError(error.message)
@@ -1135,6 +1543,35 @@ function App() {
         return
       }
 
+      if (newType === SECTION_TYPES.CAROUSEL) {
+        const nextCarousel = createSection(SECTION_TYPES.CAROUSEL)
+        setFloatingCarousels((current) => [
+          ...current,
+          {
+            id: nextCarousel.id,
+            type: SECTION_TYPES.CAROUSEL,
+            images: nextCarousel.images,
+            autoplay: nextCarousel.autoplay,
+            interval: nextCarousel.interval,
+            height: nextCarousel.height || 630,
+            showCaptions: nextCarousel.showCaptions,
+            loop: nextCarousel.loop,
+            align: nextCarousel.align || 'center',
+            offsetX: 24,
+            offsetY: 24,
+            width: 480,
+          },
+        ])
+        setActiveSectionId(null)
+        setActiveFloatingButtonId(null)
+        setActiveFloatingTextId(null)
+        setActiveFloatingImageId(null)
+        setActiveFloatingCarouselId(nextCarousel.id)
+        setActiveFloatingCarouselImageId(nextCarousel.images?.[0]?.id ?? null)
+        setDropIndex(null)
+        return
+      }
+
       insertSectionAt(newType, zoneIndex)
       setDropIndex(null)
       return
@@ -1205,6 +1642,7 @@ function App() {
     setDraggingButton(null)
     setDraggingFloatingText(null)
     setDraggingFloatingImage(null)
+    setDraggingFloatingCarousel(null)
     setResizingFloatingImage(null)
   }
 
@@ -1317,7 +1755,9 @@ function App() {
         setPages(loadedPages)
         setActivePageId(data.activePageId && loadedPages.some((page) => page.id === data.activePageId) ? data.activePageId : loadedPages[0].id)
       } else {
-        const legacySections = Array.isArray(data.sections) ? data.sections.map(normalizeNavigationSection) : []
+        const legacySections = Array.isArray(data.sections)
+          ? data.sections.map((section) => normalizeFooterSectionInApp(normalizeNavigationSection(section)))
+          : []
         const legacyButtons = legacySections.filter((section) => section.type === SECTION_TYPES.BUTTON)
         const legacyTexts = legacySections.filter((section) => section.type === SECTION_TYPES.TEXT)
         const legacyImages = legacySections.filter((section) => section.type === SECTION_TYPES.IMAGE)
@@ -1367,6 +1807,7 @@ function App() {
       setActiveFloatingButtonId(null)
       setActiveFloatingTextId(null)
       setActiveFloatingImageId(null)
+      setActiveCarouselImageId(null)
       setFirebaseStatus('Loaded from Firestore.')
     } catch (error) {
       setFirebaseStatus(error.message)
@@ -1374,9 +1815,22 @@ function App() {
   }
 
   return (
-    <div className={`wireframe-app ${isEditorCollapsed ? 'editor-collapsed' : ''}`}>
-      <aside className="left-rail">
-        <PageControlsPanel
+    <div className={`wireframe-app ${isEditorCollapsed ? 'editor-collapsed' : ''} ${overlayOpen ? 'editor-overlay-open' : ''}`}>
+        <aside
+          className="left-rail"
+          onMouseLeave={() => {
+            if (!keepEditorOpenOnLeave) {
+              setOverlayOpen(false)
+              setIsEditorCollapsed(true)
+            }
+          }}
+          onMouseEnter={() => {
+            // keep overlay open while mouse is over the rail
+            setOverlayOpen(true)
+            setIsEditorCollapsed(false)
+          }}
+        >
+          <PageControlsPanel
           pages={pages}
           activePageId={activePageId}
           selectPage={selectPage}
@@ -1403,6 +1857,9 @@ function App() {
             activeFloatingButton={activeFloatingButton}
             activeFloatingText={activeFloatingText}
             activeFloatingImage={activeFloatingImage}
+            activeFloatingCarousel={activeFloatingCarousel}
+            activeFloatingCarouselImageId={activeFloatingCarouselImageId}
+            activeCarouselImage={activeCarouselImage}
             activeNavigationLinks={activeNavigationLinks}
             activeNestedItem={activeNestedItem}
             activeNestedItemId={activeNestedItemId}
@@ -1425,6 +1882,22 @@ function App() {
             setFloatingImages={setFloatingImages}
             setActiveFloatingImageId={setActiveFloatingImageId}
             handleFloatingImageFile={handleFloatingImageFile}
+            patchFloatingCarousel={patchFloatingCarousel}
+            addFloatingCarouselImage={addFloatingCarouselImage}
+            removeFloatingCarouselImage={removeFloatingCarouselImage}
+            moveFloatingCarouselImage={moveFloatingCarouselImage}
+            patchFloatingCarouselImage={patchFloatingCarouselImage}
+            handleFloatingCarouselImageFile={handleFloatingCarouselImageFile}
+            setActiveSectionId={setActiveSectionId}
+            setActiveFloatingCarouselId={setActiveFloatingCarouselId}
+            setFloatingCarousels={setFloatingCarousels}
+            setActiveFloatingCarouselImageId={setActiveFloatingCarouselImageId}
+            activeCarouselImageId={activeCarouselImageId}
+            setActiveCarouselImageId={setActiveCarouselImageId}
+            patchCarouselImage={patchCarouselImage}
+            addCarouselImage={addCarouselImage}
+            removeCarouselImage={removeCarouselImage}
+            moveCarouselImage={moveCarouselImage}
             addNavigationLink={addNavigationLink}
             updateNavigationLink={updateNavigationLink}
             removeNavigationLink={removeNavigationLink}
@@ -1432,6 +1905,9 @@ function App() {
             removeSection={removeSection}
           />
         </ComponentPalettePanel>
+
+        {/* Left-edge hover trigger (moved below aside so it's clickable when rail is collapsed) */}
+
 
         <SummariserPanel
           inputText={inputText}
@@ -1451,7 +1927,44 @@ function App() {
           loadFromFirestore={loadFromFirestore}
           firebaseStatus={firebaseStatus}
         />
+
+        {/* Theme selector removed per request */}
+
+        <div className="rail-box" style={{ padding: '8px' }}>
+          <button
+            type="button"
+            className="editor-toggle-panel-btn"
+            onClick={() => setIsEditorCollapsed((current) => !current)}
+          >
+            {isEditorCollapsed ? '👁️ Show' : '👁️ Hide'}
+          </button>
+        </div>
+        <div className="rail-box" style={{ padding: '8px' }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={keepEditorOpenOnLeave}
+              onChange={(e) => {
+                const v = e.target.checked
+                setKeepEditorOpenOnLeave(v)
+                try { localStorage.setItem('keepEditorOpenOnLeave', v ? 'true' : 'false') } catch (err) {}
+              }}
+            />
+            <span style={{ fontSize: 12 }}>Keep editor open on mouse leave</span>
+          </label>
+        </div>
       </aside>
+
+      {/* Left-edge hover trigger (outside the left-rail so it's clickable when collapsed) */}
+      <div
+        className="edge-trigger"
+        onClick={() => {
+          // open the editor by un-collapsing the left rail
+          setIsEditorCollapsed(false)
+        }}
+        role="button"
+        aria-label="Open editor"
+      />
 
       <PreviewStage
         isEditorCollapsed={isEditorCollapsed}
@@ -1466,6 +1979,7 @@ function App() {
         setActiveFloatingButtonId={setActiveFloatingButtonId}
         setActiveFloatingTextId={setActiveFloatingTextId}
         setActiveFloatingImageId={setActiveFloatingImageId}
+        setActiveCarouselImageId={setActiveCarouselImageId}
         resizingSectionId={resizingSectionId}
         startResize={startResize}
         sectionTypes={SECTION_TYPES}
@@ -1492,10 +2006,25 @@ function App() {
         startFloatingImageDrag={startFloatingImageDrag}
         resizingFloatingImage={resizingFloatingImage}
         startFloatingImageResize={startFloatingImageResize}
+        floatingCarousels={floatingCarousels}
+        draggingFloatingCarousel={draggingFloatingCarousel}
+        startFloatingCarouselDrag={startFloatingCarouselDrag}
+        resizingFloatingCarousel={resizingFloatingCarousel}
+        startFloatingCarouselResize={startFloatingCarouselResize}
+        activeFloatingCarouselId={activeFloatingCarouselId}
+        setActiveFloatingCarouselId={setActiveFloatingCarouselId}
+        setActiveFloatingCarouselImageId={setActiveFloatingCarouselImageId}
         onSectionDragStart={onSectionDragStart}
       />
+      {/* overlay controlled by left-rail mouse events and the edge trigger */}
     </div>
   )
 }
 
-export default App
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  )
+}

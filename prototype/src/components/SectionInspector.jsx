@@ -1,758 +1,316 @@
+import React, { useEffect, useState } from 'react'
 import NavigationSectionEditor from './NavigationSectionEditor'
 
 export default function SectionInspector({
   sectionTypes,
   sectionLabels,
   activeSection,
-  activeFloatingButton,
-  activeFloatingText,
-  activeFloatingImage,
-  activeNavigationLinks,
   activeNestedItem,
   activeNestedItemId,
   imageInputRef,
-  nestedImageInputRef,
   patchSection,
   addNestedItemToBlock,
   updateNestedItemSelection,
   moveNestedItemInBlock,
   removeNestedItemFromBlock,
   patchNestedItem,
+  nestedImageInputRef,
   handleImageFile,
-  patchFloatingButton,
-  setFloatingButtons,
-  setActiveFloatingButtonId,
-  patchFloatingText,
-  setFloatingTexts,
-  setActiveFloatingTextId,
-  patchFloatingImage,
-  setFloatingImages,
-  setActiveFloatingImageId,
-  handleFloatingImageFile,
+  activeCarouselImage,
+  patchCarouselImage,
+  handleFloatingCarouselImageFile,
+  activeNavigationLinks,
   addNavigationLink,
   updateNavigationLink,
   removeNavigationLink,
   handleNavigationLogoFile,
   removeSection,
 }) {
-  if (!(activeSection || activeFloatingButton || activeFloatingText || activeFloatingImage)) {
-    return null
+  if (!activeSection) {
+    return (
+      <div style={{ padding: 12, fontSize: 13, color: '#666' }}>
+        No section selected.
+      </div>
+    )
+  }
+
+    function buildGradientString(type, angle, stops = []) {
+      if (!type || type === 'none' || !stops || stops.length === 0) return ''
+      const stopStrings = stops
+        .map((s) => {
+          const color = (s.color || '#000000').replaceAll('\n', '')
+          const pos = (s.position != null ? `${s.position}%` : '')
+          return `${color} ${pos}`.trim()
+        })
+        .join(', ')
+
+      if (type === 'linear') {
+        const ang = angle || '135deg'
+        return `linear-gradient(${ang}, ${stopStrings})`
+      }
+
+      return ''
+    }
+
+    function GradientEditor({ activeSection, onPatch }) {
+      const initial = activeSection.style || {}
+      const [gradientType, setGradientType] = useState(initial.gradientType || 'none')
+      const [gradientAngle, setGradientAngle] = useState(initial.gradientAngle || '135deg')
+      const [stops, setStops] = useState(() => {
+        const s = initial.gradientStops || []
+        if (s.length >= 2) return [s[0], s[1]]
+        return [{ position: 0, color: '#ffffff' }, { position: 100, color: '#000000' }]
+      })
+
+      useEffect(() => {
+        const s = activeSection.style || {}
+        setGradientType(s.gradientType || 'none')
+        setGradientAngle(s.gradientAngle || '135deg')
+        const g = s.gradientStops || []
+        if (g.length >= 2) setStops([g[0], g[1]])
+        else setStops([{ position: 0, color: '#ffffff' }, { position: 100, color: '#000000' }])
+      }, [activeSection.id])
+
+      const apply = (next) => {
+        const nextStops = next.stops ?? stops
+        const nextType = next.type ?? gradientType
+        const nextAngle = next.angle ?? gradientAngle
+        const backgroundImage = buildGradientString(nextType, nextAngle, nextStops)
+        const base = { ...(activeSection.style || {}) }
+        // When applying a gradient, remove any plain background so CSS vars / backgroundImage take precedence
+        delete base.background
+        onPatch({ style: { ...base, gradientType: nextType, gradientStops: nextStops, gradientAngle: nextAngle, backgroundImage } })
+      }
+
+      const updateStop = (index, patch) => {
+        const next = stops.map((s, i) => (i === index ? { ...s, ...patch } : s))
+        setStops(next)
+        apply({ stops: next })
+      }
+
+      const onTypeChange = (t) => {
+        setGradientType(t)
+        apply({ type: t })
+      }
+
+      const onAngleChange = (a) => {
+        setGradientAngle(a)
+        apply({ angle: a })
+      }
+
+      const removeGradient = () => {
+        const base = { ...(activeSection.style || {}) }
+        delete base.gradientType
+        delete base.gradientStops
+        delete base.gradientAngle
+        delete base.backgroundImage
+        onPatch({ style: base })
+        setGradientType('none')
+        setStops([{ position: 0, color: '#ffffff' }, { position: 100, color: '#000000' }])
+        setGradientAngle('135deg')
+      }
+
+      return (
+        <div style={{ marginTop: 8, borderTop: '1px solid #eee', paddingTop: 8 }}>
+          <h5 style={{ margin: '6px 0' }}>Gradient background</h5>
+          <label>
+            Gradient type
+            <select value={gradientType} onChange={(e) => onTypeChange(e.target.value)}>
+              <option value="none">None</option>
+              <option value="linear">Linear</option>
+            </select>
+          </label>
+
+          {gradientType !== 'none' && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  Angle
+                  {/* numeric-only input: keep local string state so user can fully edit number without losing cursor/selection */}
+                  {(() => {
+                    const [angleInput, setAngleInput] = useState(() => {
+                      const n = parseInt(gradientAngle)
+                      return Number.isNaN(n) ? '' : String(n)
+                    })
+
+                    useEffect(() => {
+                      const n = parseInt(gradientAngle)
+                      setAngleInput(Number.isNaN(n) ? '' : String(n))
+                    }, [gradientAngle])
+
+                    const commit = (val) => {
+                      const v = val === '' ? 0 : Number(val)
+                      if (Number.isNaN(v)) return
+                      const clamped = Math.max(0, Math.min(360, Math.round(v)))
+                      setAngleInput(String(clamped))
+                      onAngleChange(`${clamped}deg`)
+                    }
+
+                    return (
+                      <input
+                        type="number"
+                        min="0"
+                        max="360"
+                        value={angleInput}
+                        onChange={(e) => setAngleInput(e.target.value)}
+                        onBlur={(e) => commit(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') commit(e.target.value) }}
+                        style={{ width: 80 }}
+                      />
+                    )
+                  })()}
+                  <span style={{ minWidth: 60 }}>{gradientAngle}</span>
+                </label>
+                <button type="button" onClick={removeGradient}>Remove gradient</button>
+              </div>
+
+              <div style={{ marginTop: 8 }}>
+                {/* Two-stop editor (start and end) */}
+                {stops.map((stop, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                    <input type="color" value={stop.color || (idx === 0 ? '#ffffff' : '#000000')} onChange={(e) => updateStop(idx, { color: e.target.value })} />
+                    <input type="number" min="0" max="100" value={stop.position != null ? stop.position : (idx === 0 ? 0 : 100)} onChange={(e) => updateStop(idx, { position: Number(e.target.value) || 0 })} />
+                    <div style={{ color: '#666', fontSize: 12 }}>{idx === 0 ? 'start' : 'end'}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+  const onPatch = (patch) => {
+    if (typeof patchSection === 'function') patchSection(activeSection.id, patch)
   }
 
   return (
-    <div className="inspector">
-      <h3>
-        Edit:{' '}
-        {activeFloatingButton
-          ? 'Button'
-          : activeFloatingText
-            ? 'Text Box'
-            : activeFloatingImage
-              ? 'Image'
-              : sectionLabels[activeSection.type]}
-      </h3>
+    <div className="section-inspector" style={{ padding: 12 }}>
+      <h4 style={{ marginTop: 0 }}>{activeSection.type}</h4>
 
-      {activeSection && activeSection.type === sectionTypes.HEADER && (
-        <>
-          <label>
-            Heading
-            <input
-              value={activeSection.title}
-              onChange={(event) =>
-                patchSection(activeSection.id, { title: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Subheading
-            <textarea
-              value={activeSection.subtitle}
-              onChange={(event) =>
-                patchSection(activeSection.id, { subtitle: event.target.value })
-              }
-            />
-          </label>
-        </>
-      )}
-
-      {activeSection && activeSection.type === sectionTypes.TEXT && (
-        <label>
-          Paragraph
-          <textarea
-            value={activeSection.text}
-            onChange={(event) =>
-              patchSection(activeSection.id, { text: event.target.value })
-            }
-          />
-        </label>
-      )}
-
-      {activeSection &&
-        (activeSection.type === sectionTypes.HEADER ||
-          activeSection.type === sectionTypes.TEXT ||
-          activeSection.type === sectionTypes.BLOCK ||
-          activeSection.type === sectionTypes.BUTTON ||
-          activeSection.type === sectionTypes.NAVIGATION ||
-          activeSection.type === sectionTypes.FOOTER) && (
-          <label>
-            Alignment
-            <select
-              value={activeSection.align || 'left'}
-              onChange={(event) =>
-                patchSection(activeSection.id, { align: event.target.value })
-              }
-            >
-              <option value="left">Left</option>
-              <option value="center">Center</option>
-              <option value="right">Right</option>
-            </select>
-          </label>
-        )}
-
-      {activeSection && activeSection.type === sectionTypes.IMAGE && (
-        <>
-          <label>
-            Image URL
-            <input
-              value={activeSection.src}
-              onChange={(event) =>
-                patchSection(activeSection.id, { src: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Alt Text
-            <input
-              value={activeSection.alt}
-              onChange={(event) =>
-                patchSection(activeSection.id, { alt: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Caption
-            <textarea
-              value={activeSection.caption}
-              onChange={(event) =>
-                patchSection(activeSection.id, { caption: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Width (%)
-            <input
-              type="number"
-              min="10"
-              max="100"
-              value={activeSection.width || 100}
-              onChange={(event) =>
-                patchSection(activeSection.id, { width: Number(event.target.value) })
-              }
-            />
-          </label>
-          <label>
-            Height (px)
-            <input
-              type="number"
-              min="60"
-              max="900"
-              value={activeSection.height || 260}
-              onChange={(event) =>
-                patchSection(activeSection.id, { height: Number(event.target.value) })
-              }
-            />
-          </label>
-          <label>
-            Position
-            <select
-              value={activeSection.position || 'center'}
-              onChange={(event) =>
-                patchSection(activeSection.id, { position: event.target.value })
-              }
-            >
-              <option value="left">Left</option>
-              <option value="center">Center</option>
-              <option value="right">Right</option>
-            </select>
-          </label>
-          <label>
-            Replace Image File
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              onChange={(event) =>
-                handleImageFile(activeSection.id, event.target.files?.[0], false)
-              }
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() =>
-              patchSection(activeSection.id, {
-                src: '',
-                alt: '',
-                caption: '',
-              })
-            }
-          >
-            Clear Image
-          </button>
-        </>
-      )}
-
-      {activeSection && activeSection.type === sectionTypes.BLOCK && (
-        <>
+      {activeSection.type === sectionTypes.BLOCK && (
+        <div>
           <label>
             Block Title
             <input
-              value={activeSection.title}
-              onChange={(event) =>
-                patchSection(activeSection.id, { title: event.target.value })
-              }
+              value={activeSection.title || ''}
+              onChange={(e) => onPatch({ title: e.target.value })}
             />
           </label>
+
           <label>
             Block Body
             <textarea
-              value={activeSection.body}
-              onChange={(event) =>
-                patchSection(activeSection.id, { body: event.target.value })
-              }
+              value={activeSection.body || ''}
+              onChange={(e) => onPatch({ body: e.target.value })}
             />
           </label>
 
-          <div className="nested-editor-panel">
-            <div className="nested-editor-actions">
-              <button type="button" onClick={() => addNestedItemToBlock(activeSection.id, sectionTypes.TEXT)}>
-                Add Text Box
-              </button>
-              <button type="button" onClick={() => addNestedItemToBlock(activeSection.id, sectionTypes.IMAGE)}>
-                Add Image
-              </button>
+          {/* Allow editing basic block styles (background, text color, padding) */}
+          <div style={{ marginTop: 8 }}>
+            <label style={{ display: 'block', marginBottom: 6 }}>
+              Background
+              <input type="color" value={(activeSection.style && activeSection.style.background) || '#ffffff'} onChange={(e) => onPatch({ style: { ...(activeSection.style || {}), background: e.target.value } })} />
+            </label>
+            <label style={{ display: 'block', marginBottom: 6 }}>
+              Text color
+              <input type="color" value={(activeSection.style && activeSection.style.color) || '#111111'} onChange={(e) => onPatch({ style: { ...(activeSection.style || {}), color: e.target.value } })} />
+            </label>
+            <label style={{ display: 'block', marginBottom: 6 }}>
+              Padding
+              <input placeholder="12px" value={(activeSection.style && activeSection.style.padding) || ''} onChange={(e) => onPatch({ style: { ...(activeSection.style || {}), padding: e.target.value } })} />
+            </label>
+            <GradientEditor activeSection={activeSection} onPatch={onPatch} />
+          </div>
+
+          <div style={{ marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <button type="button" onClick={() => addNestedItemToBlock(activeSection.id, sectionTypes.TEXT)}>Add Text Box</button>
+              <button type="button" onClick={() => addNestedItemToBlock(activeSection.id, sectionTypes.IMAGE)}>Add Image</button>
             </div>
 
             <div className="nested-item-list">
-              {(activeSection.nestedItems || []).map((item, itemIndex) => (
-                <div
-                  key={item.id}
-                  className={`nested-item-row ${activeNestedItemId === item.id ? 'active' : ''}`}
-                  onClick={() => updateNestedItemSelection(activeSection.id, item.id)}
-                >
-                  <button type="button" className="nested-item-row-label">
-                    {itemIndex + 1}. {item.type === sectionTypes.TEXT ? 'Text Box' : 'Image'}
-                  </button>
-                  <span className="nested-item-row-actions">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        moveNestedItemInBlock(activeSection.id, item.id, -1)
-                      }}
-                      disabled={itemIndex === 0}
-                    >
-                      Up
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        moveNestedItemInBlock(activeSection.id, item.id, 1)
-                      }}
-                      disabled={itemIndex === (activeSection.nestedItems || []).length - 1}
-                    >
-                      Down
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        removeNestedItemFromBlock(activeSection.id, item.id)
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </span>
+              {(activeSection.nestedItems || []).map((item, idx) => (
+                <div key={item.id} className={`nested-item-row ${activeNestedItemId === item.id ? 'active' : ''}`} style={{ display: 'flex', justifyContent: 'space-between', padding: 6, border: '1px solid #eee', marginBottom: 6 }} onClick={() => updateNestedItemSelection(activeSection.id, item.id)}>
+                  <div>{idx + 1}. {item.type}</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); moveNestedItemInBlock(activeSection.id, item.id, -1) }} disabled={idx === 0}>Up</button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); moveNestedItemInBlock(activeSection.id, item.id, 1) }} disabled={idx === (activeSection.nestedItems || []).length - 1}>Down</button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); removeNestedItemFromBlock(activeSection.id, item.id) }}>Remove</button>
+                  </div>
                 </div>
               ))}
             </div>
 
             {activeNestedItem ? (
-              <div className="nested-item-editor">
-                <h4>Editing {activeNestedItem.type === sectionTypes.TEXT ? 'Text Box' : 'Image'}</h4>
-
+              <div className="nested-item-editor" style={{ marginTop: 8, padding: 8, border: '1px solid #ddd' }}>
+                <h5>Editing {activeNestedItem.type}</h5>
                 {activeNestedItem.type === sectionTypes.TEXT ? (
-                  <>
-                    <label>
-                      Text
-                      <textarea
-                        value={activeNestedItem.text || ''}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            text: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Width (%)
-                      <input
-                        type="number"
-                        min="20"
-                        max="100"
-                        value={activeNestedItem.width || 100}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            width: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Level
-                      <input
-                        type="number"
-                        min="0"
-                        max="20"
-                        value={activeNestedItem.level || 0}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            level: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Horizontal Offset
-                      <input
-                        type="number"
-                        min="-1000"
-                        max="1000"
-                        value={activeNestedItem.offsetX || 0}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            offsetX: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Alignment
-                      <select
-                        value={activeNestedItem.align || 'left'}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            align: event.target.value,
-                          })
-                        }
-                      >
-                        <option value="left">Left</option>
-                        <option value="center">Center</option>
-                        <option value="right">Right</option>
-                      </select>
-                    </label>
-                  </>
+                  <div>
+                    <label>Text</label>
+                    <textarea value={activeNestedItem.text || ''} onChange={(e) => patchNestedItem(activeSection.id, activeNestedItem.id, { text: e.target.value })} />
+                  </div>
                 ) : (
-                  <>
-                    <label>
-                      Image URL
-                      <input
-                        value={activeNestedItem.src || ''}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            src: event.target.value,
-                          })
-                        }
-                        placeholder="Drop or type an image URL"
-                      />
-                    </label>
-                    <label>
-                      Alt Text
-                      <input
-                        value={activeNestedItem.alt || ''}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            alt: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Caption
-                      <input
-                        value={activeNestedItem.caption || ''}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            caption: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Width (%)
-                      <input
-                        type="number"
-                        min="10"
-                        max="100"
-                        value={activeNestedItem.width || 100}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            width: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Level
-                      <input
-                        type="number"
-                        min="0"
-                        max="20"
-                        value={activeNestedItem.level || 0}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            level: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Height (px)
-                      <input
-                        type="number"
-                        min="60"
-                        max="900"
-                        value={activeNestedItem.height || 220}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            height: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Position
-                      <select
-                        value={activeNestedItem.position || 'center'}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            position: event.target.value,
-                          })
-                        }
-                      >
-                        <option value="left">Left</option>
-                        <option value="center">Center</option>
-                        <option value="right">Right</option>
-                      </select>
-                    </label>
-                    <label>
-                      Choose Image File
-                      <input
-                        ref={nestedImageInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) =>
-                          handleImageFile(
-                            activeSection.id,
-                            event.target.files?.[0],
-                            true,
-                            activeNestedItem.id,
-                          )
-                        }
-                      />
-                    </label>
-                    <label>
-                      Horizontal Offset
-                      <input
-                        type="number"
-                        min="-300"
-                        max="300"
-                        value={activeNestedItem.offsetX || 0}
-                        onChange={(event) =>
-                          patchNestedItem(activeSection.id, activeNestedItem.id, {
-                            offsetX: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        patchNestedItem(activeSection.id, activeNestedItem.id, {
-                          src: '',
-                          alt: '',
-                          caption: '',
-                        })
-                      }
-                    >
-                      Clear Image
-                    </button>
-                  </>
+                  <div>
+                    <label>Image URL</label>
+                    <input value={activeNestedItem.src || ''} onChange={(e) => patchNestedItem(activeSection.id, activeNestedItem.id, { src: e.target.value })} />
+                    <label style={{ display: 'block', marginTop: 6 }}>Replace Image File</label>
+                    <input ref={nestedImageInputRef} type="file" accept="image/*" onChange={(e) => handleImageFile(activeSection.id, e.target.files?.[0], true, activeNestedItem.id)} />
+                  </div>
                 )}
               </div>
-            ) : (
-              <p className="nested-item-empty">Add a text box or image to start building inside this block.</p>
-            )}
+            ) : null}
           </div>
-        </>
+        </div>
       )}
 
-      {activeFloatingButton && (
-        <>
-          <label>
-            Label
-            <input
-              value={activeFloatingButton.label}
-              onChange={(event) =>
-                patchFloatingButton(activeFloatingButton.id, { label: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Link
-            <input
-              value={activeFloatingButton.href}
-              onChange={(event) =>
-                patchFloatingButton(activeFloatingButton.id, { href: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Offset X
-            <input
-              type="number"
-              min="-1000"
-              max="1000"
-              value={activeFloatingButton.offsetX || 0}
-              onChange={(event) =>
-                patchFloatingButton(activeFloatingButton.id, { offsetX: Number(event.target.value) })
-              }
-            />
-          </label>
-          <label>
-            Offset Y
-            <input
-              type="number"
-              min="-1000"
-              max="1000"
-              value={activeFloatingButton.offsetY || 0}
-              onChange={(event) =>
-                patchFloatingButton(activeFloatingButton.id, { offsetY: Number(event.target.value) })
-              }
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => patchFloatingButton(activeFloatingButton.id, { offsetX: 0, offsetY: 0 })}
-          >
-            Reset Position
-          </button>
-          <button
-            type="button"
-            className="remove-btn"
-            onClick={() => {
-              setFloatingButtons((current) => current.filter((button) => button.id !== activeFloatingButton.id))
-              setActiveFloatingButtonId(null)
-            }}
-          >
-            Remove Floating Button
-          </button>
-        </>
-      )}
+      {/* Basic styling for other section types */}
+      {activeSection && activeSection.type !== sectionTypes.BLOCK && (
+        <div className="section-style" style={{ marginTop: 8 }}>
+          {/* Image section editor */}
+          {activeSection.type === sectionTypes.IMAGE && (
+            <div style={{ marginBottom: 8 }}>
+              <label>Image URL</label>
+              <input value={activeSection.src || ''} onChange={(e) => onPatch({ src: e.target.value })} />
+              <label style={{ display: 'block', marginTop: 6 }}>Replace Image File</label>
+              <input ref={imageInputRef} type="file" accept="image/*" onChange={(e) => handleImageFile(activeSection.id, e.target.files?.[0])} />
+            </div>
+          )}
 
-      {activeFloatingText && (
-        <>
-          <label>
-            Text
-            <textarea
-              value={activeFloatingText.text}
-              onChange={(event) =>
-                patchFloatingText(activeFloatingText.id, { text: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Width (px)
-            <input
-              type="number"
-              min="140"
-              max="900"
-              value={activeFloatingText.width || 280}
-              onChange={(event) =>
-                patchFloatingText(activeFloatingText.id, { width: Number(event.target.value) })
-              }
-            />
-          </label>
-          <label>
-            Alignment
-            <select
-              value={activeFloatingText.align || 'left'}
-              onChange={(event) =>
-                patchFloatingText(activeFloatingText.id, { align: event.target.value })
-              }
-            >
-              <option value="left">Left</option>
-              <option value="center">Center</option>
-              <option value="right">Right</option>
-            </select>
-          </label>
-          <label>
-            Offset X
-            <input
-              type="number"
-              min="-1000"
-              max="1000"
-              value={activeFloatingText.offsetX || 0}
-              onChange={(event) =>
-                patchFloatingText(activeFloatingText.id, { offsetX: Number(event.target.value) })
-              }
-            />
-          </label>
-          <label>
-            Offset Y
-            <input
-              type="number"
-              min="-1000"
-              max="1000"
-              value={activeFloatingText.offsetY || 0}
-              onChange={(event) =>
-                patchFloatingText(activeFloatingText.id, { offsetY: Number(event.target.value) })
-              }
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => patchFloatingText(activeFloatingText.id, { offsetX: 0, offsetY: 0 })}
-          >
-            Reset Position
-          </button>
-          <button
-            type="button"
-            className="remove-btn"
-            onClick={() => {
-              setFloatingTexts((current) => current.filter((textBox) => textBox.id !== activeFloatingText.id))
-              setActiveFloatingTextId(null)
-            }}
-          >
-            Remove Floating Text
-          </button>
-        </>
-      )}
+          {/* Carousel image editor */}
+          {activeSection.type === sectionTypes.CAROUSEL && activeCarouselImage && (
+            <div style={{ marginBottom: 8 }}>
+              <h5>Editing slide</h5>
+              <label>Slide Image URL</label>
+              <input value={activeCarouselImage.src || ''} onChange={(e) => patchCarouselImage && patchCarouselImage(activeSection.id, activeCarouselImage.id, { src: e.target.value })} />
+              <label>Caption</label>
+              <input value={activeCarouselImage.caption || ''} onChange={(e) => patchCarouselImage && patchCarouselImage(activeSection.id, activeCarouselImage.id, { caption: e.target.value })} />
+              <label style={{ display: 'block', marginTop: 6 }}>Replace Slide Image</label>
+              <input type="file" accept="image/*" onChange={(e) => handleFloatingCarouselImageFile && handleFloatingCarouselImageFile(activeSection.id, activeCarouselImage.id, e.target.files?.[0])} />
+            </div>
+          )}
 
-      {activeFloatingImage && (
-        <>
-          <label>
-            Image URL
-            <input
-              value={activeFloatingImage.src}
-              onChange={(event) =>
-                patchFloatingImage(activeFloatingImage.id, { src: event.target.value })
-              }
-            />
+          {/* Button editor */}
+          {activeSection.type === sectionTypes.BUTTON && (
+            <div style={{ marginBottom: 8 }}>
+              <label>Label</label>
+              <input value={activeSection.label || ''} onChange={(e) => onPatch({ label: e.target.value })} />
+              <label>Href</label>
+              <input value={activeSection.href || ''} onChange={(e) => onPatch({ href: e.target.value })} />
+            </div>
+          )}
+          <label>Background
+            <input type="color" value={(activeSection.style && activeSection.style.background) || '#ffffff'} onChange={(e) => onPatch({ style: { ...(activeSection.style || {}), background: e.target.value } })} />
           </label>
-          <label>
-            Alt Text
-            <input
-              value={activeFloatingImage.alt}
-              onChange={(event) =>
-                patchFloatingImage(activeFloatingImage.id, { alt: event.target.value })
-              }
-            />
+          <label>Text color
+            <input type="color" value={(activeSection.style && activeSection.style.color) || '#111111'} onChange={(e) => onPatch({ style: { ...(activeSection.style || {}), color: e.target.value } })} />
           </label>
-          <label>
-            Caption
-            <textarea
-              value={activeFloatingImage.caption}
-              onChange={(event) =>
-                patchFloatingImage(activeFloatingImage.id, { caption: event.target.value })
-              }
-            />
+          <label>Padding
+            <input placeholder="12px" value={(activeSection.style && activeSection.style.padding) || ''} onChange={(e) => onPatch({ style: { ...(activeSection.style || {}), padding: e.target.value } })} />
           </label>
-          <label>
-            Width (px)
-            <input
-              type="number"
-              min="120"
-              max="1200"
-              value={activeFloatingImage.width || 320}
-              onChange={(event) =>
-                patchFloatingImage(activeFloatingImage.id, { width: Number(event.target.value) })
-              }
-            />
-          </label>
-          <label>
-            Height (px)
-            <input
-              type="number"
-              min="80"
-              max="900"
-              value={activeFloatingImage.height || 220}
-              onChange={(event) =>
-                patchFloatingImage(activeFloatingImage.id, { height: Number(event.target.value) })
-              }
-            />
-          </label>
-          <label>
-            Replace Image File
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(event) => handleFloatingImageFile(activeFloatingImage.id, event.target.files?.[0])}
-            />
-          </label>
-          <label>
-            Offset X
-            <input
-              type="number"
-              min="-1000"
-              max="1000"
-              value={activeFloatingImage.offsetX || 0}
-              onChange={(event) =>
-                patchFloatingImage(activeFloatingImage.id, { offsetX: Number(event.target.value) })
-              }
-            />
-          </label>
-          <label>
-            Offset Y
-            <input
-              type="number"
-              min="-1000"
-              max="1000"
-              value={activeFloatingImage.offsetY || 0}
-              onChange={(event) =>
-                patchFloatingImage(activeFloatingImage.id, { offsetY: Number(event.target.value) })
-              }
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => patchFloatingImage(activeFloatingImage.id, { offsetX: 0, offsetY: 0 })}
-          >
-            Reset Position
-          </button>
-          <button
-            type="button"
-            className="remove-btn"
-            onClick={() => {
-              setFloatingImages((current) => current.filter((imageBox) => imageBox.id !== activeFloatingImage.id))
-              setActiveFloatingImageId(null)
-            }}
-          >
-            Remove Floating Image
-          </button>
-        </>
-      )}
-
-      {!activeFloatingButton && activeSection && activeSection.type === sectionTypes.BUTTON && (
-        <p className="nested-item-empty">Legacy button sections are no longer created from the palette.</p>
-      )}
-
-      {!activeFloatingText && activeSection && activeSection.type === sectionTypes.TEXT && (
-        <p className="nested-item-empty">Legacy text sections are no longer created from the palette.</p>
-      )}
-
-      {!activeFloatingImage && activeSection && activeSection.type === sectionTypes.IMAGE && (
-        <p className="nested-item-empty">Legacy image sections are no longer created from the palette.</p>
+          {/* Gradient editor */}
+          <GradientEditor activeSection={activeSection} onPatch={onPatch} />
+        </div>
       )}
 
       <NavigationSectionEditor
@@ -765,27 +323,9 @@ export default function SectionInspector({
         handleNavigationLogoFile={handleNavigationLogoFile}
       />
 
-      {activeSection && activeSection.type === sectionTypes.FOOTER && (
-        <label>
-          Footer text
-          <textarea
-            value={activeSection.text}
-            onChange={(event) =>
-              patchSection(activeSection.id, { text: event.target.value })
-            }
-          />
-        </label>
-      )}
-
-      {activeSection && (
-        <button
-          type="button"
-          className="remove-btn"
-          onClick={() => removeSection(activeSection.id)}
-        >
-          Remove Selected
-        </button>
-      )}
+      <div style={{ marginTop: 10 }}>
+        <button type="button" className="remove-btn" onClick={() => removeSection && removeSection(activeSection.id)}>Remove Selected</button>
+      </div>
     </div>
   )
 }
